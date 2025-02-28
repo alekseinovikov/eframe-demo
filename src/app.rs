@@ -1,9 +1,16 @@
+use eframe::epaint::{CircleShape, Pos2};
+use eframe::glow::RED;
+use egui::{Color32, Stroke};
+use egui::accesskit::Point;
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
     // Example stuff:
     label: String,
+
+    points: Vec<Pos2>,
 
     #[serde(skip)] // This how you opt-out of serialization of a field
     value: f32,
@@ -15,6 +22,7 @@ impl Default for TemplateApp {
             // Example stuff:
             label: "Hello World!".to_owned(),
             value: 2.7,
+            points: Vec::new(),
         }
     }
 }
@@ -33,6 +41,17 @@ impl TemplateApp {
 
         Default::default()
     }
+
+    fn add_point(&mut self, point: Pos2) {
+        self.points.push(point);
+    }
+
+    fn remove_point_if_intersect(&mut self, point: Pos2) {
+        self.points.retain(|&p| {
+            let distance = (p - point).length();
+            distance > 20.0
+        });
+    }
 }
 
 impl eframe::App for TemplateApp {
@@ -40,7 +59,6 @@ impl eframe::App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
-
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
 
@@ -61,49 +79,29 @@ impl eframe::App for TemplateApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
+            let painter = ui.painter();
+            let response = ui.interact(ui.max_rect(), ui.id(), egui::Sense::click_and_drag());
 
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
-            });
-
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
+            // if pressed or dragged left mouse button
+            if response.dragged() || response.clicked() {
+                if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                    if ctx.input(|i| i.pointer.button_down(egui::PointerButton::Primary)) {
+                        self.add_point(pos);
+                    } else {
+                        self.remove_point_if_intersect(pos);
+                    }
+                }
             }
 
-            ui.separator();
-
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/main/",
-                "Source code."
-            ));
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                powered_by_egui_and_eframe(ui);
-                egui::warn_if_debug_build(ui);
-            });
+            // draw points
+            for &point in &self.points {
+                painter.add(CircleShape {
+                    center: point,
+                    radius: 5.0,
+                    fill: Color32::RED,
+                    stroke: Stroke::new(1.0, Color32::BLACK),
+                });
+            }
         });
     }
-
-    /// Called by the frame work to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
-    }
-}
-
-fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        ui.label("Powered by ");
-        ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-        ui.label(" and ");
-        ui.hyperlink_to(
-            "eframe",
-            "https://github.com/emilk/egui/tree/master/crates/eframe",
-        );
-        ui.label(".");
-    });
 }
